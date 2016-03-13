@@ -1,0 +1,88 @@
+from sklearn.cluster import KMeans
+import scipy as np
+import csv
+import sys
+
+
+
+
+#k = number of clusters
+k=0
+#d = number of dimensions/features
+d=0
+#n = number of training examples / points
+n=0
+#covariances = np.zeros((k,d,d))
+#cluster_locations = a numpy array of size k of d-length arrays, each of which are means of the normal distributions of each cluster
+#data = an array of size n of d-length arrays, each of which are training examples / points
+
+
+def compute_covariances(priors,cluster_locations,data):
+    covariances = np.zeros((k,d,d))
+    for c in range(k):
+        for i in range(n):
+            print "\n data"
+            print data[i]
+            print "\n cluster_locations"
+            print cluster_locations[c]
+            print "\n prior"
+            print priors[c]
+            print "\n np.dot((data[i]-cluster_locations[c]),(data[i]-cluster_locations[c]).T)/(priors[c]*n)"
+            print np.dot((data[i]-cluster_locations[c]),(data[i]-cluster_locations[c]).T)/(priors[c]*n)
+            covariances[c] += np.dot((data[i]-cluster_locations[c]),(data[i]-cluster_locations[c]).T)/(priors[c]*n)
+    # c=0
+    # for i in range(n):
+    #     print "\n data"
+    #     print data[i]
+    #     print "\n cluster_locations"
+    #     print cluster_locations[c]
+    #     print "\n prior"
+    #     print priors[c]
+    #     print "\n np.dot((data[i]-cluster_locations[c]),(data[i]-cluster_locations[c]).T)/(priors[c]*n)"
+    #     print np.dot((data[i]-cluster_locations[c]),(data[i]-cluster_locations[c]).T)/(priors[c]*n)
+    #     covariances[c] += np.dot((data[i]-cluster_locations[c]),(data[i]-cluster_locations[c]).T)/(priors[c]*n)
+
+
+    return covariances
+def em(num_clusters):
+    global n
+    global d
+    global k
+
+    data = np.genfromtxt("oned.csv", delimiter=",", skip_header=1)
+    data = data.reshape(-1,1)
+
+    n = len(data)
+    d = len(data[0])
+    k = num_clusters
+
+    model = KMeans(n_clusters=k)
+
+    model.fit(data)
+
+    #each point is assinged to a cluster ranging from 0 to k-1
+    #only needed to compute the priors
+    cluster_assignments = model.predict(data)
+    
+    #mu
+    cluster_locations = model.cluster_centers_
+
+
+
+    #priors - initialized with kmeans
+    priors = np.zeros(k)
+    for i in range(0,k):
+        priors[i] = len(cluster_assignments[np.where(cluster_assignments == i)])/float(n)
+    # print priors
+    
+    #covariances - initialized with the initial priors
+    covariances = compute_covariances(priors,cluster_locations,data)
+    print "\n covariances"
+    print covariances
+    print "\n cluster locations"
+    print cluster_locations
+    print "\n priors"
+    print priors
+
+
+em(2)
