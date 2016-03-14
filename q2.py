@@ -6,7 +6,8 @@ from scipy.stats import multivariate_normal as mvn
 from PIL import Image
 from numpy.core.umath_tests import matrix_multiply as mm
 
-img = Image.open("balloons.jpg")
+img_file_name = "nature"
+img = Image.open(img_file_name+".jpg")
 print(sp.array(img).size)
 print(img.size[1]*img.size[0]*3)
 simple_x = sp.array(img).reshape(img.size[1]*img.size[0], 3)
@@ -14,11 +15,11 @@ print(simple_x)
 simple_y = sp.genfromtxt('simple.data',delimiter=',',skip_header=1,usecols=0,dtype=int)
 # simple_x = sp.genfromtxt('simple.data',delimiter=',',skip_header=1,usecols=(1,2),dtype=float)#.reshape(-1,1)
 
-K = 5
+K = 10
 D = simple_x.shape[1]
 N = simple_x.shape[0]
 ll_old = 0
-diff_thresh = 100
+diff_thresh = 300
 
 def seedVars():
 	global model
@@ -100,11 +101,7 @@ def eStep():
 	print("posts")
 	posts = sp.zeros((K,N))
 	for j in range(K):
-			# posts[j,:] = priors[j] * mvn(mus[j],covars[j]).pdf(simple_x)
-			print(priors[j])
-			pdfvals = sp.vectorize(lambda s: pfn(s,mus[j]))(simple_x)
-			print(pdfvals[0])
-			posts[j,:] = priors[j] * pdfvals
+			posts[j,:] = priors[j] * mvn(mus[j],covars[j], allow_singular=True).pdf(simple_x)
 	posts /= posts.sum(0)
 	
 def ll():
@@ -115,7 +112,7 @@ def ll():
 	global ll_old
 	ll_new = 0
 	for prior, mu, covar in zip(priors, mus, covars):
-		ll_new += prior*mvn(mu, covar).pdf(simple_x)
+		ll_new += prior*mvn(mu, covar, allow_singular=True).pdf(simple_x)
 	ll_new = sp.log(ll_new).sum()
 	print("Diff is {}".format(ll_new - ll_old))
 	if abs(ll_new - ll_old) < diff_thresh:
@@ -147,6 +144,6 @@ for i in range (img.size[0]):
 		mean_index = posts[:,j*img.size[0]+i].argmax(axis=0)
 		v = mus[mean_index,:]
 		pix[i, j]=tuple(sp.vectorize(lambda x: int(x))(v))
-newImg1.save("balloons-em-k{}-{}.png".format(K,iters))
+newImg1.save(img_file_name + ("-em-k{}-{}.png".format(K,iters)))
 print(priors)
 print(posts)
