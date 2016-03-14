@@ -4,6 +4,7 @@ import math
 import numpy.linalg as la
 from scipy.stats import multivariate_normal as mvn
 from PIL import Image
+from numpy.core.umath_tests import matrix_multiply as mm
 
 img = Image.open("balloons.jpg")
 print(sp.array(img).size)
@@ -16,7 +17,8 @@ simple_y = sp.genfromtxt('simple.data',delimiter=',',skip_header=1,usecols=0,dty
 K = 5
 D = simple_x.shape[1]
 N = simple_x.shape[0]
-
+ll_old = 0
+diff_thresh = 100
 
 def seedVars():
 	global model
@@ -47,15 +49,16 @@ def seedVars():
 	for c in range(K):
 		for i in range(N):
 			posts[c,i] = 1 if pred_y[i] == c else 0
-
+			
 	print("Seeding covar mats")
 	covars = sp.zeros((K,D,D))
 	# print((simple_x[0] - mus[0]).shape)
 	for j in range(K):
-		for i in range(N):
-			ys = sp.reshape(simple_x[i] - mus[j], (D,1))
-			covars[j] += posts[j,i] * sp.dot(ys,ys.T)
-		covars[j] /= posts[j,:].sum()
+		ys = simple_x - mus[j,:]
+		covars[j] = (posts[j,:,None,None] \
+		* mm(ys[:,:,None], \
+		ys[:,None,:])).sum(axis=0)
+	covars /= posts.sum(axis=1)[:,None,None]
 
 def mStep():
 	global model
@@ -66,29 +69,27 @@ def mStep():
 	global covars
 	
 	print("priors")
-	priors = sp.zeros(K)
-	for c in range(K):
-		priors[c] = sp.sum(posts[c])/N
+	priors = sp.sum(posts,axis=1)/N
 
 	print("mus")
-	mus = sp.zeros((K,D))
-	for c in range(K):
-		for j in range(D):
-			for i in range(N):
-				mus[c,j] += posts[c,i]/N/priors[c]*simple_x[i,j]
+	mus = sp.dot(posts, simple_x)
+	mus /= posts.sum(1)[:, None]
 
 
 	print("Covars")
 	for j in range(K):
-		for i in range(N):
-			ys = sp.reshape(simple_x[i] - mus[j], (D,1))
-			covars[j] += posts[j,i] * sp.dot(ys,ys.T)
-		covars[j] /= posts[j,:].sum()
-
-def pfn(i,c,k,covmats,data,clusters):
+		ys = simple_x - mus[j,:]
+		covars[j] = (posts[j,:,None,None] \
+		* mm(ys[:,:,None], \
+		ys[:,None,:])).sum(axis=0)
+	covars /= posts.sum(axis=1)[:,None,None]
+	
+def pfn(data,cluster):
 	# print(math.exp(-0.01*sp.dot((data[i]-clusters[c]).T,data[i]-clusters[c])))
+	print("-----")
+	print(data)
 	return 1.0/math.sqrt((2*math.pi)**D)\
-		*math.exp(-0.01*sp.dot((data[i]-clusters[c]).T,(data[i]-clusters[c])))
+		*math.exp(-0.01*sp.dot((data-cluster).T,(data-cluster)))
 
 def eStep():
 	global posts
@@ -99,19 +100,45 @@ def eStep():
 	print("posts")
 	posts = sp.zeros((K,N))
 	for j in range(K):
-			posts[j,:] = priors[j] * mvn(mus[j],covars[j]).pdf(simple_x)
+			# posts[j,:] = priors[j] * mvn(mus[j],covars[j]).pdf(simple_x)
+			print(priors[j])
+			pdfvals = sp.vectorize(lambda s: pfn(s,mus[j]))(simple_x)
+			print(pdfvals[0])
+			posts[j,:] = priors[j] * pdfvals
 	posts /= posts.sum(0)
-
+	
+def ll():
+	global posts
+	global covars
+	global mus
+	global priors
+	global ll_old
+	ll_new = 0
+	for prior, mu, covar in zip(priors, mus, covars):
+		ll_new += prior*mvn(mu, covar).pdf(simple_x)
+	ll_new = sp.log(ll_new).sum()
+	print("Diff is {}".format(ll_new - ll_old))
+	if abs(ll_new - ll_old) < diff_thresh:
+		return False
+	ll_old = ll_new
+	
+	return True
+				
 print("seeding")
 seedVars()
 # mStep()
-for i in range(1):
+iters = 0
+for i in range(100):
 	print("------ STEP {} -------".format(i))
 	print("e step")
 	eStep()
 	print("m step")
 	mStep()
-
+	iters += 1
+	if not ll():
+		break
+	
+	
 newImg1 = Image.new('RGB', (img.size[0],img.size[1]))
 pix = newImg1.load()
 print(img.size[0]*img.size[1])
@@ -120,13 +147,6 @@ for i in range (img.size[0]):
 		mean_index = posts[:,j*img.size[0]+i].argmax(axis=0)
 		v = mus[mean_index,:]
 		pix[i, j]=tuple(sp.vectorize(lambda x: int(x))(v))
-newImg1.save("balloons-clustered-em-1.png")
+newImg1.save("balloons-em-k{}-{}.png".format(K,iters))
 print(priors)
 print(posts)
-
-'''
-for i in range(len(mus)):
-	covars.append(calc_covar_matrix(
-		mus[i],
-		simple_x[sp.where(pred_y == i)]))
-'''
